@@ -1,0 +1,87 @@
+project:
+  name: mekong-drought-forecast
+  timezone: Asia/Bangkok
+  contact: "mptan2509@gmail.com"
+
+period:
+  calib_start: 1991   # năm đầu tải dữ liệu ngày (hiệu chuẩn SPEI)
+  calib_end: 2020     # năm cuối giai đoạn chuẩn fit SPEI (30 năm, chuẩn WMO)
+  ml_start: 1997      # năm đầu dùng cho ML: GloFAS (lưu lượng Mekong) có từ 1997
+  end: 2025
+  end_lag_days: 7     # ERA5 trễ vài ngày so với hiện tại
+
+
+# lấy theo ranh giới 13 tỉnh thành đồng bằng sông Cửu Long cũ, sau đó thực hiện tính trung bình sau sáp nhập
+stations:
+  - {id: LA, name: Tan An,     province: Long An,    province_2025: Tay Ninh,  lat: 10.535, lon: 106.413, zone: coastal}
+  - {id: TG, name: My Tho,     province: Tien Giang, province_2025: Dong Thap, lat: 10.360, lon: 106.360, zone: coastal}
+  - {id: BT, name: Ben Tre,    province: Ben Tre,    province_2025: Vinh Long, lat: 10.24,  lon: 106.38,  zone: coastal}
+  - {id: TV, name: Tra Vinh,   province: Tra Vinh,   province_2025: Vinh Long, lat: 9.935,  lon: 106.345, zone: coastal}
+  - {id: VL, name: Vinh Long,  province: Vinh Long,  province_2025: Vinh Long, lat: 10.253, lon: 105.972, zone: inland}
+  - {id: DT, name: Cao Lanh,   province: Dong Thap,  province_2025: Dong Thap, lat: 10.46,  lon: 105.63,  zone: inland}
+  - {id: AG, name: Long Xuyen, province: An Giang,   province_2025: An Giang,  lat: 10.37,  lon: 105.43,  zone: inland}
+  - {id: KG, name: Rach Gia,   province: Kien Giang, province_2025: An Giang,  lat: 10.01,  lon: 105.08,  zone: coastal}
+  - {id: CT, name: Can Tho,    province: Can Tho,    province_2025: Can Tho,   lat: 10.033, lon: 105.783, zone: inland}
+  - {id: HG, name: Vi Thanh,   province: Hau Giang,  province_2025: Can Tho,   lat: 9.784,  lon: 105.470, zone: inland}
+  - {id: ST, name: Soc Trang,  province: Soc Trang,  province_2025: Can Tho,   lat: 9.603,  lon: 105.973, zone: coastal}
+  - {id: BL, name: Bac Lieu,   province: Bac Lieu,   province_2025: Ca Mau,    lat: 9.294,  lon: 105.727, zone: coastal}
+  - {id: CM, name: Ca Mau,     province: Ca Mau,     province_2025: Ca Mau,    lat: 9.18,   lon: 105.15,  zone: coastal}
+
+api:
+  base_free: "https://archive-api.open-meteo.com/v1/archive"
+  base_paid: "https://customer-archive-api.open-meteo.com/v1/archive"
+  # Cố định 1 mô hình để chuỗi đồng nhất. KHÔNG dùng best_match: đổi sang IFS 9 km từ 2017 -> gãy chuỗi.
+  models: era5
+  daily_vars:
+    - precipitation_sum             # P: Tổng lượng mưa trong 24h, P trong cânm  bằng nước 
+    - et0_fao_evapotranspiration    # PET: dau vao SPEI, bốc thoát hơi nước 
+    - temperature_2m_max            # nắng nóng, nhiệt độ cao nhất trong ngày
+    - temperature_2m_min            # nhiệt độ thấp nhất trong ngày
+    - relative_humidity_2m_mean     # do kho khong khi
+    - wind_speed_10m_mean           # gio chuong (gio mua Dong Bac) day man vao song
+    - wind_direction_10m_dominant   # Hướng gió chiếm ưu thê trong ngày ở 10m
+    - soil_moisture_0_to_7cm_mean   # han nong nghiep: đất mặt, phản ứng nhanh vơi shanj
+    - soil_moisture_7_to_28cm_mean  # vung re lua
+    - soil_moisture_28_to_100cm_mean  # vung re cay an trai
+  # ERA5 da co do am dat trung binh ngay tu 1991 -> khong can tai du lieu gio nua.
+  hourly_vars: []
+  daily_chunk_years: 5
+  hourly_chunk_years: 2
+  sleep_seconds: 1.5
+
+
+# Dữ liệu ngoài:ENSO, IOD, lưu lượng Mekong
+external:
+  oni_url: "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
+  dmi_url: "https://psl.noaa.gov/gcos_wgsp/Timeseries/Data/dmi.had.long.data"
+  flood_api: "https://flood-api.open-meteo.com/v1/flood" 
+  
+  discharge_points:
+    - {id: KR, name: Kratie,    lat: 12.425, lon: 105.975}   # tổng lượng nước thượng nguồn
+    - {id: TC, name: Tan Chau,  lat: 10.825, lon: 105.275}   # đầu vào sông Tiền
+
+# --- Chia tập theo thời gian (có khoảng đệm 3 tháng cuối train/val) ---
+split:
+  train_end: 2018
+  val_end: 2021
+
+# --- Tham số dựng đặc trưng / nhãn (mekong.features.build) ---
+features:
+  spei_scales: [1, 3, 6, 12]   # SPEI-1/3/6/12
+  target_scale: 3              # nhãn dự báo là SPEI-3
+  horizons: [1, 2, 3]          # dự báo trước 1, 2, 3 tháng
+  drought_threshold: -1.0      # SPEI <= -1: hạn vừa trở lên
+  lags: [1, 2, 3]
+  lag_vars: [precip_sum, et0_sum, D, tmax_mean, rh_mean, easterly_wind,
+             sm_0_7, sm_7_28, sm_28_100, spei1, spei3, spei6, q_TC_anom, q_KR_anom]
+
+paths:   # tính theo thư mục gốc dự án
+  raw: data/raw             # dữ liệu API trả về, giữ nguyên
+  external: data/external   # ONI, DMI, lưu lượng sông, hồ sơ nông nghiệp
+  interim: data/interim     # <ID>_daily.csv đã gộp
+  processed: data/processed
+  knowledge: data/knowledge # kho tài liệu cho RAG
+  reports: reports
+  figures: reports/figures
+  models: models
+  logs: logs

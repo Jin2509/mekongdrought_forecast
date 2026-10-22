@@ -1,0 +1,36 @@
+# Python Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python compiled bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.DS_Store
+
+# Dữ liệu thô, trung gian và kết quả xử lý cục bộ (Cực kỳ quan trọng vì dung lượng lớn)
+data/raw/
+data/interim/
+data/processed/
+
+# Nhật ký log chạy hệ thống
+logs/*.log
+logs/*.out
+
+# Thư mục lưu mô hình huấn luyện cục bộ
+models/*.pkl
+models/*.h5
+models/*.pt
+models/*.onnx
+models/*.bin
+
+# Báo cáo kết quả kiểm định cục bộ (nếu không cần commit kết quả chạy thử)
+reports/figures/*
+reports/validation_report.csv
+reports/spei_sanity.csv
+
+# Các file cấu hình môi trường nhạy cảm
+.env
