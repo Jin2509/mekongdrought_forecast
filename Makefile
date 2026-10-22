@@ -1,7 +1,8 @@
 PY ?= .venv/bin/python
 RUN = PYTHONPATH=src $(PY) -m
 
-.PHONY: install fetch external validate build data test
+.PHONY: install fetch external validate build data test freeze-raw check-raw preprocess baseline
+
 
 install:
 	$(PY) -m pip install -r requirements.txt
@@ -22,3 +23,9 @@ data: fetch external validate build
 
 test:
 	$(PY) -m pytest -q
+
+freeze-raw: ## ghi checksum dữ liệu thô
+	$(RUN) mekong.quality.freeze
+
+check-raw: ## kiểm tra dữ liệu thô không bị sửa
+	$(RUN) mekong.quality.freeze --check
