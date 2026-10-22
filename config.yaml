@@ -85,3 +85,21 @@ paths:   # tính theo thư mục gốc dự án
   figures: reports/figures
   models: models
   logs: logs
+
+
+# --- Tiền xử lý & mô hình dự báo hạn (mekong.forecasting) ---
+forecasting:
+  horizons: [1, 2, 3]
+  class_thresholds: [-1.0, 1.0]            # Hạn <= -1 < Bình thường < 1 <= Ẩm
+  class_names: [drought, normal, wet]      # mã lớp 0, 1, 2
+  id_cols: [date, station, split]
+  drop_cols: [province, province_2025, lat, lon, month, et0_hg_sum]
+  leak_cols: [oni, dmi]                    # chỉ dùng oni_lag2/3, dmi_lag1
+  anomaly_cols: [sm_0_7, sm_7_28, sm_28_100]   # tự lấy thêm các cột _lag
+  log1p_cols: [hot_days, dry_spell_max]
+  log_cols: [q_KR_mean, q_KR_min, q_TC_mean, q_TC_min]
+  linear_drop: [precip_sum, rain_days, q_KR_mean, q_KR_min, q_KR_anom,
+                sm_7_28, easterly_days, tmax_max, q_TC_mean]   # tự lấy thêm các cột _lag
+  cv_test_years: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+  cv_gap_months: 3
+  random_state: 42

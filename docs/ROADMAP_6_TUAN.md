@@ -1022,6 +1022,203 @@ baseline:   ## baseline trên val (dữ liệu sạch)
 - `make test` pass;
 - `reports/week3_baselines.csv`.
 
+### A12. Tổng kết giai đoạn A — kết quả và bộ đặc trưng cuối cùng
+
+> **Trạng thái (23/10/2026):** đã có `freeze.py`, mục `forecasting:` trong `config.yaml` và `data/MANIFEST.sha256` (94 dòng). Các bước A4–A11 **chưa chạy**. Cột "Kỳ vọng" bên dưới lấy từ 94 cột thật của `dataset_monthly_ml.csv` và từ config hiện tại. Cột "Thực tế" để trống, điền khi chạy xong.
+
+#### A12.1. Các kết quả đầu ra của giai đoạn A
+
+| # | Sản phẩm | Bước | Nội dung | Kỳ vọng | Thực tế |
+|---|---|---|---|---|---|
+| 1 | `data/MANIFEST.sha256` | A1 | SHA-256 của 91 file ERA5 ngày + 3 file ngoài | 94 dòng; `make check-raw` thoát 0 | 94 dòng (đã có) |
+| 2 | `reports/validation_report.csv` | A2 | Kiểm tra chất lượng dữ liệu thô | 0 ERROR, 8 WARN | |
+| 3 | `dataset_monthly_ml.csv` | A2 | Dataset tháng (đầu vào của A) | 4446 × 94, 0 NaN; 13 trạm × 342 tháng (1997-04 → 2025-09) | |
+| 4 | `config.yaml` → `forecasting:` | A3 | Tham số xử lý | 13 khóa (horizons … random_state) | đã có |
+| 5 | `model_input_h1.csv`, `_h2`, `_h3` | A4, A5, A10 | `date`, `station`, `split` + 77 đặc trưng thô + `y_reg`, `y_cls`, `y_drought` | mỗi file 4446 dòng × 83 cột | |
+| 6 | `models/feature_list_h{1,2,3}.json` | A7, A10 | `features_raw`, `features_tree`, `features_linear`, cột rò rỉ, ngưỡng, SHA-256 nguồn | 77 / 91 / 73 tên cột | |
+| 7 | `forecasting/transformers.py`, `preprocess.py` | A6–A10 | 4 transformer + pipeline `tree` / `linear` | import được, chạy được | |
+| 8 | `tests/test_preprocess.py` | A10 | 8 test mới (+ 5 test cũ) | 13 test pass | |
+| 9 | `reports/week3_baselines.csv` | A11 | Climatology, Persistence, tuyến tính × h1–h3 trên **val** | 9 dòng | |
+
+**Các con số cố định của dữ liệu (dùng ở giai đoạn B):**
+
+| Hạng mục | Giá trị |
+|---|---|
+| Chia tập | train 3354 (1997-04 → 2018-09), val 429 (2019-01 → 2021-09), test 585 (2022-01 → 2025-09), gap 78 (bỏ) |
+| Nhãn h1 (Hạn / BT / Ẩm) | train 579 / 2005 / 770; val 93 / 308 / 28; test 42 / 375 / 168 |
+| Nhãn h2 | train 579 / 2005 / 770; val 93 / 296 / 40; test 42 / 371 / 172 |
+| Nhãn h3 | train 567 / 2017 / 770; val 93 / 284 / 52; test 42 / 376 / 167 |
+| Kiểm định chéo | 9 fold (năm 2010–2018), gap 3 tháng; fold 2010: 1950 / 156, fold 2014: 2574 / 156, fold 2018: 3198 / 117 |
+
+#### A12.2. Từ 94 cột đến bộ đặc trưng cuối cùng
+
+| Bước | Thao tác | Số cột |
+|---|---|---|
+| 0 | `dataset_monthly_ml.csv` | **94** |
+| 1 | Bỏ định danh `date`, `station`, `split` (`date`, `station` vẫn chuyển vào pipeline để dùng nội bộ, không phải đặc trưng số) | −3 → 91 |
+| 2 | Bỏ metadata `province`, `province_2025`, `lat`, `lon`, `month`, `et0_hg_sum` | −6 → 85 |
+| 3 | Bỏ cột rò rỉ `oni`, `dmi` (tháng hiện tại) | −2 → 83 |
+| 4 | Bỏ 6 cột nhãn `target_spei3_h{1,2,3}`, `target_drought_h{1,2,3}` (chuyển thành `y_reg`, `y_cls`, `y_drought`) | −6 → **77 đặc trưng thô** |
+| 5a | **Bộ tree:** 77 + `has_hot_day` + 13 one-hot `station_*` | **91** |
+| 5b | **Bộ linear:** 77 − 18 cột tương quan cao + `has_hot_day` + 13 one-hot `station_*` | **73** |
+
+**Nhãn (không phải đặc trưng), cho mỗi horizon h ∈ {1, 2, 3}:**
+
+| Nhãn | Nguồn | Ý nghĩa |
+|---|---|---|
+| `y_reg` | `target_spei3_h{h}` | SPEI-3 của tháng t+h (hồi quy) |
+| `y_cls` | `to_class(y_reg, [-1, 1])` | 0 Hạn (SPEI ≤ −1), 1 Bình thường, 2 Ẩm (SPEI ≥ 1) |
+| `y_drought` | `target_drought_h{h}` | 1 nếu SPEI-3 tháng t+h ≤ −1 (trùng với `y_cls == 0`) |
+
+#### A12.3. Danh sách đầy đủ 77 đặc trưng thô
+
+Tất cả là giá trị **đã biết vào cuối tháng t**. Các cột này được lưu **chưa biến đổi** trong `model_input_h*.csv`.
+
+**Tóm tắt theo nhóm:**
+
+| Nhóm | Số cột | Cột |
+|---|---|---|
+| A. Khí tượng tháng t (ERA5) | 16 | `precip_sum`, `rain_days`, `dry_spell_max`, `et0_sum`, `tmax_mean`, `tmax_max`, `tmin_mean`, `hot_days`, `rh_mean`, `wind_mean`, `easterly_wind`, `easterly_days`, `sm_0_7`, `sm_7_28`, `sm_28_100`, `D` |
+| B. Chỉ số hạn SPEI tháng t | 4 | `spei1`, `spei3`, `spei6`, `spei12` |
+| C. Đặc điểm trạm | 1 | `coastal` |
+| D. Thủy văn Mekong | 6 | `q_KR_mean`, `q_KR_min`, `q_KR_anom`, `q_TC_mean`, `q_TC_min`, `q_TC_anom` |
+| E. Triều thiên văn | 2 | `tide_amp_max`, `tide_amp_mean` |
+| F. Mùa vụ | 3 | `month_sin`, `month_cos`, `dry_season` |
+| G. Trễ 1–3 tháng của 14 biến | 42 | xem bảng G |
+| H. Chỉ số khí hậu (đã trễ, không rò rỉ) | 3 | `oni_lag2`, `oni_lag3`, `dmi_lag1` |
+| **Tổng** | **77** | |
+
+**Chi tiết nhóm A–F và H (35 cột):**
+
+| # | Cột | Nhóm | Ý nghĩa | Xử lý (tree) | Xử lý (linear) |
+|---|---|---|---|---|---|
+| 1 | `precip_sum` | A | Tổng lượng mưa tháng (mm) | giữ | **loại** (r = 0,99 với `D`) |
+| 2 | `rain_days` | A | Số ngày mưa ≥ 1 mm | giữ | **loại** (r = 0,92 với `precip_sum`) |
+| 3 | `dry_spell_max` | A | Chuỗi ngày khô (< 1 mm) dài nhất | log1p | log1p → chuẩn hóa |
+| 4 | `et0_sum` | A | Tổng bốc thoát hơi tiềm năng FAO-56 (mm) | giữ | chuẩn hóa |
+| 5 | `tmax_mean` | A | Trung bình Tmax ngày (°C) | giữ | chuẩn hóa |
+| 6 | `tmax_max` | A | Tmax cao nhất tháng (°C) | giữ | **loại** (r = 0,93 với `tmax_mean`) |
+| 7 | `tmin_mean` | A | Trung bình Tmin ngày (°C) | giữ | chuẩn hóa |
+| 8 | `hot_days` | A | Số ngày Tmax ≥ 35 °C | log1p | log1p → chuẩn hóa |
+| 9 | `rh_mean` | A | Độ ẩm tương đối trung bình (%) | giữ | chuẩn hóa |
+| 10 | `wind_mean` | A | Tốc độ gió 10 m trung bình | giữ | chuẩn hóa |
+| 11 | `easterly_wind` | A | Thành phần gió thổi từ hướng Đông (gió chướng) | giữ | chuẩn hóa |
+| 12 | `easterly_days` | A | Số ngày hướng gió chủ đạo 45°–150° | giữ | **loại** (r = 0,95 với `easterly_wind`) |
+| 13 | `sm_0_7` | A | Ẩm đất 0–7 cm (m³/m³) | dị thường (trạm, tháng) | dị thường → chuẩn hóa |
+| 14 | `sm_7_28` | A | Ẩm đất 7–28 cm | dị thường (trạm, tháng) | **loại** (r = 0,98 với `sm_0_7`) |
+| 15 | `sm_28_100` | A | Ẩm đất 28–100 cm | dị thường (trạm, tháng) | dị thường → chuẩn hóa |
+| 16 | `D` | A | Cân bằng nước P − ET0 (mm) | giữ | chuẩn hóa |
+| 17 | `spei1` | B | SPEI 1 tháng | giữ | chuẩn hóa |
+| 18 | `spei3` | B | SPEI 3 tháng (cùng thang với nhãn) | giữ | chuẩn hóa |
+| 19 | `spei6` | B | SPEI 6 tháng | giữ | chuẩn hóa |
+| 20 | `spei12` | B | SPEI 12 tháng | giữ | chuẩn hóa |
+| 21 | `coastal` | C | 1 = tỉnh ven biển (9 trạm), 0 = nội đồng (4 trạm) | giữ | chuẩn hóa |
+| 22 | `q_KR_mean` | D | Lưu lượng TB tháng tại Kratie (m³/s) | log | **loại** (r = 0,99 với `q_TC_mean`) |
+| 23 | `q_KR_min` | D | Lưu lượng nhỏ nhất tháng tại Kratie | log | **loại** |
+| 24 | `q_KR_anom` | D | Dị thường chuẩn hóa lưu lượng Kratie | giữ | **loại** (r = 0,98 với `q_TC_anom`) |
+| 25 | `q_TC_mean` | D | Lưu lượng TB tháng tại Tân Châu | log | **loại** |
+| 26 | `q_TC_min` | D | Lưu lượng nhỏ nhất tháng tại Tân Châu | log | log → chuẩn hóa |
+| 27 | `q_TC_anom` | D | Dị thường chuẩn hóa lưu lượng Tân Châu | giữ | chuẩn hóa |
+| 28 | `tide_amp_max` | E | Biên độ triều thiên văn (M2+S2) lớn nhất tháng | giữ | chuẩn hóa |
+| 29 | `tide_amp_mean` | E | Biên độ triều thiên văn trung bình tháng | giữ | chuẩn hóa |
+| 30 | `month_sin` | F | sin(2π·tháng/12) | giữ | chuẩn hóa |
+| 31 | `month_cos` | F | cos(2π·tháng/12) | giữ | chuẩn hóa |
+| 32 | `dry_season` | F | 1 nếu tháng 12–5 (mùa khô) | giữ | chuẩn hóa |
+| 33 | `oni_lag2` | H | ONI (ENSO) của tháng t−2 | giữ | chuẩn hóa |
+| 34 | `oni_lag3` | H | ONI của tháng t−3 | giữ | chuẩn hóa |
+| 35 | `dmi_lag1` | H | DMI (IOD) của tháng t−1 | giữ | chuẩn hóa |
+
+**Bảng G — 42 cột trễ** (14 biến × trễ 1, 2, 3 tháng; tên `<biến>_lag1`, `_lag2`, `_lag3`):
+
+| # | Biến gốc | 3 cột trễ | Xử lý (tree) | Xử lý (linear) |
+|---|---|---|---|---|
+| 1 | `precip_sum` | `precip_sum_lag1`, `_lag2`, `_lag3` | giữ | **loại cả 3** |
+| 2 | `et0_sum` | `et0_sum_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 3 | `D` | `D_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 4 | `tmax_mean` | `tmax_mean_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 5 | `rh_mean` | `rh_mean_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 6 | `easterly_wind` | `easterly_wind_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 7 | `sm_0_7` | `sm_0_7_lag1`, `_lag2`, `_lag3` | dị thường (tháng tham chiếu t−k) | dị thường → chuẩn hóa |
+| 8 | `sm_7_28` | `sm_7_28_lag1`, `_lag2`, `_lag3` | dị thường (tháng tham chiếu t−k) | **loại cả 3** |
+| 9 | `sm_28_100` | `sm_28_100_lag1`, `_lag2`, `_lag3` | dị thường (tháng tham chiếu t−k) | dị thường → chuẩn hóa |
+| 10 | `spei1` | `spei1_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 11 | `spei3` | `spei3_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 12 | `spei6` | `spei6_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 13 | `q_TC_anom` | `q_TC_anom_lag1`, `_lag2`, `_lag3` | giữ | chuẩn hóa |
+| 14 | `q_KR_anom` | `q_KR_anom_lag1`, `_lag2`, `_lag3` | giữ | **loại cả 3** |
+
+#### A12.4. Các phép xử lý áp lên đặc trưng
+
+Thứ tự trong pipeline: `HotDayFlag` → `LogFeatures` → (`DropColumns`, chỉ linear) → `StationMonthAnomaly` → `ColumnTransformer`. Mọi thống kê chỉ **fit trên train** (hoặc trên phần train của từng fold).
+
+| Phép xử lý | Cột áp dụng | Bộ tree | Bộ linear | Lý do |
+|---|---|---|---|---|
+| Thêm cờ `has_hot_day` = 1 nếu `hot_days` > 0 | tạo 1 cột mới | 1 | 1 | 88% số tháng có `hot_days` = 0 |
+| `log1p` | `hot_days`, `dry_spell_max` | 2 | 2 | Biến đếm lệch phải |
+| `log` | `q_KR_mean`, `q_KR_min`, `q_TC_mean`, `q_TC_min` | 4 | 1 (`q_TC_min`; 3 cột còn lại bị loại) | Lưu lượng lệch phải, luôn > 0 |
+| Bỏ cột tương quan > 0,9 | 9 biến gốc + các cột `_lag` → 18 cột | 0 | 18 | Tránh đa cộng tuyến cho Ridge/Logistic |
+| Dị thường (x − mean) / std theo (trạm, tháng trong năm) | `sm_0_7`, `sm_7_28`, `sm_28_100` và các cột `_lag` | 12 | 8 | Ô lưới ERA5 của các trạm lệch nhau về mức ẩm đất (vd. BL) |
+| One-hot `station` | 13 trạm | 13 | 13 | Mô hình gộp 13 trạm cần biết trạm |
+| `StandardScaler` | toàn bộ cột số | không | 60 | Hệ số tuyến tính so sánh được |
+| Giữ nguyên giá trị (passthrough) | các cột thô không qua phép nào ở trên | 59 | 0 | Cây không cần chuẩn hóa |
+
+Sau biến đổi, **tên cột giữ nguyên** nhưng ý nghĩa thay đổi: `sm_*` là dị thường; `hot_days`, `dry_spell_max` là log1p; `q_*_mean`, `q_*_min` là log.
+
+**18 cột bị loại ở bộ linear:** `precip_sum`, `precip_sum_lag1`, `precip_sum_lag2`, `precip_sum_lag3`, `rain_days`, `q_KR_mean`, `q_KR_min`, `q_KR_anom`, `q_KR_anom_lag1`, `q_KR_anom_lag2`, `q_KR_anom_lag3`, `sm_7_28`, `sm_7_28_lag1`, `sm_7_28_lag2`, `sm_7_28_lag3`, `easterly_days`, `tmax_max`, `q_TC_mean`.
+
+#### A12.5. Bộ đặc trưng cuối cùng "tree" — 91 cột (Random Forest, XGBoost)
+
+Thứ tự đúng như đầu ra của `ColumnTransformer` (one-hot trước, cột số sau, `has_hot_day` cuối).
+
+| Khối | Số cột | Tên cột |
+|---|---|---|
+| One-hot trạm | 13 | `station_AG`, `station_BL`, `station_BT`, `station_CM`, `station_CT`, `station_DT`, `station_HG`, `station_KG`, `station_LA`, `station_ST`, `station_TG`, `station_TV`, `station_VL` |
+| Khí tượng tháng t | 16 | `precip_sum`, `rain_days`, `dry_spell_max` (L1), `et0_sum`, `tmax_mean`, `tmax_max`, `tmin_mean`, `hot_days` (L1), `rh_mean`, `wind_mean`, `easterly_wind`, `easterly_days`, `sm_0_7` (A), `sm_7_28` (A), `sm_28_100` (A), `D` |
+| SPEI | 4 | `spei1`, `spei3`, `spei6`, `spei12` |
+| Trạm | 1 | `coastal` |
+| Thủy văn | 6 | `q_KR_mean` (L), `q_KR_min` (L), `q_KR_anom`, `q_TC_mean` (L), `q_TC_min` (L), `q_TC_anom` |
+| Triều | 2 | `tide_amp_max`, `tide_amp_mean` |
+| Mùa vụ | 3 | `month_sin`, `month_cos`, `dry_season` |
+| Trễ | 42 | 14 biến × `_lag1..3` ở bảng G (9 cột `sm_*_lag*` là dị thường  (A)) |
+| Khí hậu | 3 | `oni_lag2`, `oni_lag3`, `dmi_lag1` |
+| Cờ mới | 1 | `has_hot_day` |
+| **Tổng** | **91** | |
+
+Ký hiệu: (A) dị thường theo (trạm, tháng); (L) log; (L1) log1p.
+
+#### A12.6. Bộ đặc trưng cuối cùng "linear" — 73 cột (Ridge, Logistic)
+
+Mọi cột số (60 cột) đều qua `StandardScaler` sau các phép ở A12.4.
+
+| Khối | Số cột | Tên cột |
+|---|---|---|
+| One-hot trạm | 13 | `station_AG` … `station_VL` (như bộ tree) |
+| Khí tượng tháng t | 11 | `dry_spell_max` (L1), `et0_sum`, `tmax_mean`, `tmin_mean`, `hot_days` (L1), `rh_mean`, `wind_mean`, `easterly_wind`, `sm_0_7` (A), `sm_28_100` (A), `D` |
+| SPEI | 4 | `spei1`, `spei3`, `spei6`, `spei12` |
+| Trạm | 1 | `coastal` |
+| Thủy văn | 2 | `q_TC_min` (L), `q_TC_anom` |
+| Triều | 2 | `tide_amp_max`, `tide_amp_mean` |
+| Mùa vụ | 3 | `month_sin`, `month_cos`, `dry_season` |
+| Trễ | 33 | `et0_sum`, `D`, `tmax_mean`, `rh_mean`, `easterly_wind`, `sm_0_7` (A), `sm_28_100` (A), `spei1`, `spei3`, `spei6`, `q_TC_anom` — mỗi biến `_lag1`, `_lag2`, `_lag3` |
+| Khí hậu | 3 | `oni_lag2`, `oni_lag3`, `dmi_lag1` |
+| Cờ mới | 1 | `has_hot_day` |
+| **Tổng** | **73** | |
+
+#### A12.7. Tóm tắt so sánh hai bộ đặc trưng
+
+| | Tree | Linear |
+|---|---|---|
+| Mô hình dùng | Random Forest, XGBoost | Ridge, Logistic Regression |
+| Đặc trưng thô dùng | 77 / 77 | 59 / 77 |
+| Cột tạo thêm | `has_hot_day` + 13 one-hot | `has_hot_day` + 13 one-hot |
+| Cột dị thường ẩm đất | 12 | 8 |
+| Cột log / log1p | 4 / 2 | 1 / 2 |
+| Chuẩn hóa | không | có (60 cột số) |
+| **Tổng số cột vào mô hình** | **91** | **73** |
+| Biến rò rỉ | không có (`oni`, `dmi` tháng t đã loại) | không có |
+
+**Cách kiểm tra khi chạy xong:** so `features_tree` và `features_linear` trong `models/feature_list_h1.json` với hai bảng A12.5 và A12.6. Nếu lệch, điền cột "Thực tế" ở A12.1 và ghi lý do vào `WEEK3_STEP.md`.
+
 ---
 
 ## 4. Giai đoạn B — Mô hình dự báo hạn (Week 3–4)

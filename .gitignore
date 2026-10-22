@@ -34,3 +34,6 @@ reports/spei_sanity.csv
 
 # Các file cấu hình môi trường nhạy cảm
 .env
+
+nodeedon_modules/
+*.md
