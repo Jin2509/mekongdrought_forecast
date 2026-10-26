@@ -1,18 +1,23 @@
 import { useState } from "react";
-import { USING_MOCK, api, availableMonths, latestMonth } from "./api/index.js";
+import { api, availableMonths, latestMonth } from "./api/index.js";
 import AdvicePage from "./components/AdvicePage.jsx";
 import DetailPanel from "./components/DetailPanel.jsx";
 import MapView from "./components/MapView.jsx";
 import ModelPage from "./components/ModelPage.jsx";
-import { EVENTS, fmtMonth } from "./lib/format.js";
+import { EVENTS } from "./lib/format.js";
 import { STATIONS, unitsFor } from "./lib/stations.js";
 import useAsync from "./lib/useAsync.js";
 
 const TABS = [
-  { id: "map", label: "Bản đồ & dự báo" },
-  { id: "advice", label: "Khuyến nghị" },
-  { id: "model", label: "Đánh giá mô hình" },
+  { id: "map", label: "Bản đồ", title: "Bản đồ & dự báo", icon: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" },
+  { id: "advice", label: "Khuyến nghị", title: "Khuyến nghị canh tác", icon: "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" },
+  { id: "model", label: "Mô hình", title: "Đánh giá mô hình", icon: "M4 20V10M10 20V4M16 20v-7M22 20H2" },
 ];
+
+const Icon = ({ d }) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+);
 const YEARS = [...new Set(availableMonths.map((m) => m.slice(0, 4)))];
 
 function IssuePicker({ issued, setIssued }) {
@@ -25,20 +30,26 @@ function IssuePicker({ issued, setIssued }) {
   };
   return (
     <div className="issue">
-      <span className="muted">Tháng phát hành</span>
-      <select value={m} onChange={(e) => set(y, e.target.value)}>
-        {monthsOfYear.map((mm) => <option key={mm} value={mm}>Th {Number(mm)}</option>)}
-      </select>
-      <select value={y} onChange={(e) => set(e.target.value, m)}>
-        {YEARS.map((yy) => <option key={yy}>{yy}</option>)}
-      </select>
+      <div className="issue-date" title="Tháng phát hành dự báo">
+        <Icon d="M3 5h18v16H3zM3 10h18M8 3v4M16 3v4" />
+        <select value={m} onChange={(e) => set(y, e.target.value)} aria-label="Tháng phát hành">
+          {monthsOfYear.map((mm) => <option key={mm} value={mm}>Th {Number(mm)}</option>)}
+        </select>
+        <select value={y} onChange={(e) => set(e.target.value, m)} aria-label="Năm phát hành">
+          {YEARS.map((yy) => <option key={yy}>{yy}</option>)}
+        </select>
+      </div>
       <div className="quick">
         <button className={issued === latestMonth ? "on" : ""} onClick={() => setIssued(latestMonth)}>Mới nhất</button>
-        {EVENTS.map((e) => (
-          <button key={e.month} className={issued === e.month ? "on" : ""} onClick={() => setIssued(e.month)}>
-            {e.label}
-          </button>
-        ))}
+        <select
+          className={EVENTS.some((e) => e.month === issued) ? "on" : ""}
+          value={EVENTS.some((e) => e.month === issued) ? issued : ""}
+          onChange={(e) => e.target.value && setIssued(e.target.value)}
+          aria-label="Sự kiện hạn mặn"
+        >
+          <option value="">Sự kiện…</option>
+          {EVENTS.map((e) => <option key={e.month} value={e.month}>{e.label}</option>)}
+        </select>
       </div>
     </div>
   );
@@ -75,24 +86,22 @@ export default function App() {
     <div className="app">
       <header className="top">
         <div className="brand">
-          <h1>Hạn &amp; mặn ĐBSCL</h1>
-          <p>Dự báo SPEI-3 · cảnh báo nguy cơ mặn · khuyến nghị RAG</p>
+          <img src="/logo.svg" alt="" width="36" height="36" />
+          <div>
+            <h1>Meko<span>Drought</span></h1>
+            <p>Dự báo hạn &amp; cảnh báo mặn ĐBSCL</p>
+          </div>
         </div>
-        <nav>
+        <nav aria-label="Trang">
           {TABS.map((t) => (
-            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)}>{t.label}</button>
+            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => setTab(t.id)} title={t.title}>
+              <Icon d={t.icon} />
+              <span>{t.label}</span>
+            </button>
           ))}
         </nav>
         <IssuePicker issued={issued} setIssued={setIssued} />
       </header>
-
-      {USING_MOCK && (
-        <div className="banner">
-          <b>Bản xem trước giao diện.</b> Lịch sử SPEI, lưu lượng, ONI/DMI là dữ liệu thật của project; dự báo, SHAP,
-          SRI dự báo, ma trận nhầm lẫn và khuyến nghị là <b>số liệu mẫu</b> (chưa có mô hình giai đoạn B–D).
-          Dữ liệu đến {fmtMonth(latestMonth)}.
-        </div>
-      )}
 
       {tab === "map" && (
         <div className={`map-page ${unit ? "with-panel" : ""}`}>
