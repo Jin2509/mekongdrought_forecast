@@ -1,4 +1,6 @@
-import { GeoJSON, MapContainer, TileLayer } from "react-leaflet";
+import { Fragment, useEffect } from "react";
+import L from "leaflet";
+import { GeoJSON, MapContainer, Marker, Polygon, Rectangle, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import geo13 from "../data/geo_13.json";
 import geo6 from "../data/geo_6.json";
@@ -9,6 +11,90 @@ import {
 import { unitsFor } from "../lib/stations.js";
 
 const BOUNDS = [[8.4, 104.3], [11.2, 107.0]];
+const TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+const VN_BOUNDS = [[7.0, 102.1], [23.4, 117.3]];
+
+// Quần đảo Hoàng Sa và Trường Sa của Việt Nam: vùng bao (hình elip); nhãn đặt ngay trên mép bắc của vùng bao.
+function ellipse([lat, lng], rLat, rLng, n = 36) {
+  return Array.from({ length: n }, (_, i) => {
+    const a = (2 * Math.PI * i) / n;
+    return [lat + rLat * Math.sin(a), lng + rLng * Math.cos(a)];
+  });
+}
+const ISLANDS = [
+  { id: "hs", name: "Quần đảo Hoàng Sa", short: "QĐ. Hoàng Sa", center: [17.3, 111.95], ring: ellipse([16.45, 111.95], 0.85, 1.15) },
+  { id: "ts", name: "Quần đảo Trường Sa", short: "QĐ. Trường Sa", center: [11.9, 114.2], ring: ellipse([9.6, 114.2], 2.3, 2.9) },
+];
+const islandIcon = (isl, small) => L.divIcon({
+  className: `island-label${small ? " small" : ""}`,
+  html: `<span>${small ? isl.short : isl.name}<br/><em>(Việt Nam)</em></span>`,
+  iconSize: [0, 0],
+});
+const ISLAND_ICONS = { big: ISLANDS.map((i) => islandIcon(i)), small: ISLANDS.map((i) => islandIcon(i, true)) };
+const ISLAND_STYLE = { color: "#0f4c5c", weight: 1.2, dashArray: "4 3", fillColor: "#0f4c5c", fillOpacity: 0.06 };
+
+function Islands({ small }) {
+  return ISLANDS.map((isl, k) => (
+    <Fragment key={isl.id}>
+      <Polygon positions={isl.ring} pathOptions={ISLAND_STYLE} interactive={false} />
+      <Marker position={isl.center} icon={ISLAND_ICONS[small ? "small" : "big"][k]} interactive={false} keyboard={false} />
+    </Fragment>
+  ));
+}
+
+// Khung bản đồ phụ có kích thước sau lần render đầu -> căn lại để luôn thấy đủ hai quần đảo.
+function FitVN() {
+  const map = useMap();
+  useEffect(() => {
+    const t = setTimeout(() => {
+      map.invalidateSize();
+      map.fitBounds(VN_BOUNDS, { padding: [2, 2] });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [map]);
+  return null;
+}
+
+// Bản đồ phụ: toàn lãnh thổ Việt Nam kèm hai quần đảo, khung cam là vùng ĐBSCL của bản đồ chính.
+function Inset() {
+  return (
+    <div className="inset" aria-label="Bản đồ Việt Nam và các quần đảo Hoàng Sa, Trường Sa">
+      <MapContainer bounds={VN_BOUNDS} zoomControl={false} attributionControl={false} dragging={false}
+                    scrollWheelZoom={false} doubleClickZoom={false} touchZoom={false} boxZoom={false}
+                    keyboard={false} zoomSnap={0.1} className="inset-map">
+        <FitVN />
+        <TileLayer url={TILE_URL} maxZoom={16} />
+        <Islands small />
+        <Rectangle bounds={BOUNDS} pathOptions={{ color: "#ea580c", weight: 1.5, fillOpacity: 0.1 }} interactive={false} />
+      </MapContainer>
+      <span className="inset-title">Việt Nam</span>
+    </div>
+  );
+}
+
+// Tâm diện tích của vòng ngoài lớn nhất, dùng để đặt nhãn tên tỉnh.
+function labelPoint(geometry) {
+  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  let best = null;
+  for (const [ring] of polys) {
+    let a = 0, x = 0, y = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const f = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+      a += f; x += (ring[j][0] + ring[i][0]) * f; y += (ring[j][1] + ring[i][1]) * f;
+    }
+    if (!best || Math.abs(a) > best.a) best = { a: Math.abs(a), lat: y / (3 * a), lng: x / (3 * a) };
+  }
+  return [best.lat, best.lng];
+}
+
+const LABELS = Object.fromEntries([["13", geo13], ["6", geo6]].map(([lv, g]) => [
+  lv,
+  g.features.map((f) => ({
+    id: f.properties.id,
+    pos: labelPoint(f.geometry),
+    icon: L.divIcon({ className: "prov-label", html: `<span>${f.properties.name}</span>`, iconSize: [0, 0] }),
+  })),
+]));
 
 function unitStyle(mode, d, s, selected) {
   let fill = LEVEL_COLORS.off;
@@ -64,10 +150,11 @@ export default function MapView({
         </label>
       </div>
 
+      <div className="map-area">
       <MapContainer bounds={BOUNDS} className="map" scrollWheelZoom zoomSnap={0.25}>
         <TileLayer
           attribution="Tiles &copy; Esri — Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          url={TILE_URL}
           maxZoom={16}
         />
         {ready && (
@@ -87,7 +174,13 @@ export default function MapView({
             }}
           />
         )}
+        <Islands />
+        {LABELS[level].map((l) => (
+          <Marker key={`${level}-${l.id}`} position={l.pos} icon={l.icon} interactive={false} keyboard={false} />
+        ))}
       </MapContainer>
+      <Inset />
+      </div>
 
       <div className="legend">
         {mode === "drought"
